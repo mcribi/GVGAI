@@ -28,6 +28,8 @@ public class Test {
 		//mis agentes
 		String myAgentController = "tracks.singlePlayer.evaluacion.src_CRIBILLES_PEREZ_MARIA.myAgent_Camel";
 		String agenteDijkstra = "tracks.singlePlayer.evaluacion.src_CRIBILLES_PEREZ_MARIA.AgenteDijkstra";
+		//String agenteAstar = "tracks.singlePlayer.evaluacion.src_CRIBILLES_PEREZ_MARIA.AgenteAstar";
+		String agenteRTA = "tracks.singlePlayer.evaluacion.src_CRIBILLES_PEREZ_MARIA.RTA";
 
 		//Load available games
 		String spGamesCollection =  "examples/all_games_sp.csv";
@@ -39,7 +41,7 @@ public class Test {
 
 		// Game and level to play
 		int gameIdx = 59;
-		int levelIdx=99; // level names from 0 to 4 (game_lvlN.txt).
+		int levelIdx=6; // level names from 0 to 4 (game_lvlN.txt).
 		String gameName = games[gameIdx][1];
 		String game = games[gameIdx][0];
 		String level1 = game.replace(gameName, gameName + "_lvl" + levelIdx);
