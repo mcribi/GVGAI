@@ -14,7 +14,7 @@ import ontology.Types.ACTIONS;
 import tools.ElapsedCpuTimer;
 import tools.Vector2d;
 
-public class RTA extends AbstractPlayer {
+public class LRTA extends AbstractPlayer {
 		LinkedList <ACTIONS> ruta; //ruta con las acciones a seguir
 		Vector2d fescala; //numero de pixeles de cada celda
 		Vector2d portal;//posicion portal
@@ -33,7 +33,7 @@ public class RTA extends AbstractPlayer {
 		HashMap<String, Integer> tablaHeuristicas; //la posicion del vector la codificamos como un string para poder acceder a el y que no haya duplicados
 		
 		//Constructor
-		public RTA(StateObservation stateObs, ElapsedCpuTimer elapsedTimer) {
+		public LRTA(StateObservation stateObs, ElapsedCpuTimer elapsedTimer) {
 			obstaculos=  new HashSet<>(); //observacion obstaculos (objetos inmoviles)
 			capas=  new HashSet<>(); //observacion capas
 			capasIniciales_rojas = new HashSet<>(); //posiciones de las capas iniciales rojas
@@ -210,40 +210,33 @@ public class RTA extends AbstractPlayer {
 			//ordenamos los sucesores por la f (compareTo)
 			Collections.sort(sucesores);
 			
-			//seleccionamos el mejor y el segundo mejor (de este solo el valor de la heuristica)
+			//seleccionamos el mejor 
 			Nodo mejorSucesor = null;
-			Nodo segundoMejor = null;
 			int mejorF = Integer.MAX_VALUE; //inicializamos el mejor minimo al maximo posible
-			int segundoMejorF = Integer.MAX_VALUE; //inicializamos el segundo minimo al maximo posible
 			
-			if (sucesores.size() >= 1) { 
-			    mejorSucesor = sucesores.get(0);
-			    mejorF = mejorSucesor.f;
+			for (Nodo sucesor : sucesores) {
+			    if (sucesor.f < mejorF) {
+			        mejorF = sucesor.f;
+			        mejorSucesor = sucesor;
+			    }
 			}
-			if (sucesores.size() >= 2) {
-			    segundoMejor = sucesores.get(1);  //el segundo mejor valor (puede ser igual que el mejor)
-			    segundoMejorF = segundoMejor.f;
-			} else if (sucesores.size() == 1) {
-			    segundoMejorF = mejorF;  //solo hay un sucesor, es ese f
-			}
-			
-			//actualizamos la heurística del nodo actual (la del segundo)
-			int nuevaHeuristica;
-			//String clave_actual = nodo_actual.posicion.x + "," + nodo_actual.posicion.y+ "," + nodo_actual.capa_roja + "," + nodo_actual.capa_azul;;
-			String clave_actual=nodo_actual.generarClave();
-			if (sucesores.size() == 1) {
-			    //cuando solo hay un sucesor
-			    nuevaHeuristica = Math.max(nodo_actual.heuristica, mejorF);
-				
-			} else {
-			    //cuando hay mas de un sucesor
-				nuevaHeuristica = Math.max(nodo_actual.heuristica, segundoMejorF);
-			}
-			tablaHeuristicas.put(clave_actual, nuevaHeuristica);
-			nodo_actual.heuristica = nuevaHeuristica;
-			nodo_actual.f=nuevaHeuristica + nodo_actual.coste; //actualizamos el f del nodo actual
 
-			//nos movemos al mejor sucesor
+			//actualizamos heurística del nodo actual (usando solo el mejor sucesor)
+			String claveActual = nodo_actual.generarClave();
+			int nuevaHeuristica;
+
+			if (mejorSucesor != null) {
+			    nuevaHeuristica = Math.max(nodo_actual.heuristica, mejorF);
+			} else {
+			    nuevaHeuristica = nodo_actual.heuristica;
+			}
+
+			//guardamos en tabla y actualizar nodo
+			tablaHeuristicas.put(claveActual, nuevaHeuristica);
+			nodo_actual.heuristica = nuevaHeuristica;
+			nodo_actual.f = nuevaHeuristica + nodo_actual.coste;  // f(n) = h(n) + g(n)
+
+			//nos movemos al mejor sucesor si existe
 			if (mejorSucesor != null) {
 			    nodo_actual = mejorSucesor;
 			    actualizarCapas(nodo_actual);

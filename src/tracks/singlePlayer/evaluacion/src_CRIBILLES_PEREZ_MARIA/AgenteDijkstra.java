@@ -2,7 +2,7 @@ package tracks.singlePlayer.evaluacion.src_CRIBILLES_PEREZ_MARIA;
 
 import core.player.AbstractPlayer;
 
-
+import java.awt.Dimension;
 import java.util.ArrayList;
 import java.util.PriorityQueue;
 import java.util.HashSet;
@@ -23,16 +23,21 @@ public class AgenteDijkstra extends AbstractPlayer {
 	Vector2d portal;//posicion portal
 	Vector2d pos_avatar; //posicion avatar 
 	int nodos_expandidos; //contador de nodos expandidos
-	ArrayList <Observation> obstaculos; //observacion obstaculos (objetos inmoviles)
-	ArrayList <Observation> capas; //observacion capas
-	ArrayList<Vector2d> capasIniciales_rojas; //posiciones de las capas iniciales rojas
-	ArrayList<Vector2d> capasIniciales_azules; //posiciones de las capas iniciales azules
+	HashSet <Observation> obstaculos; //observacion obstaculos (objetos inmoviles)
+	HashSet <Observation> capas; //observacion capas
+	HashSet<Vector2d> capasIniciales_rojas; //posiciones de las capas iniciales rojas
+	HashSet<Vector2d> capasIniciales_azules; //posiciones de las capas iniciales azules
 	
 	//abiertos y cerrados
 	//hacemos una cola con prioridad para que se ordenen y saque el que menos coste tenga 
 	PriorityQueue<Nodo> abiertos;
 	//HashSet<Nodo> visitados;
-	ArrayList<Nodo> visitados;
+	HashSet<Nodo> visitados;
+	//tamaño mapa
+	int anchura;
+    int altura;
+    int antiguedad; 
+	
 	
 	
 	/* * initialize all variables for the agent
@@ -40,29 +45,27 @@ public class AgenteDijkstra extends AbstractPlayer {
 	* @param elapsedTimer Timer when the action returned is due.
 	*/
 	public AgenteDijkstra(StateObservation stateObs, ElapsedCpuTimer elapsedTimer) {
-		obstaculos=  new ArrayList<>(); //observacion obstaculos (objetos inmoviles)
-		capas=  new ArrayList<>(); //observacion capas
-		capasIniciales_rojas = new ArrayList<>(); //posiciones de las capas iniciales rojas
-		capasIniciales_azules = new ArrayList<>();
+		
+		obstaculos=  new HashSet<>(); //observacion obstaculos (objetos inmoviles)
+		capas=  new HashSet<>(); //observacion capas
+		capasIniciales_rojas = new HashSet<>(); //posiciones de las capas iniciales rojas
+		capasIniciales_azules = new HashSet<>();
 		nodos_expandidos=0; 
+		antiguedad=0; 
+		
+
+	    
+	  //Calculamos el factor de escala entre mundos (pixeles -> grid)
+		anchura= stateObs.getObservationGrid().length;
+		altura=stateObs.getObservationGrid()[0].length;
+		
 		//Calculamos el factor de escala entre mundos (pixeles -> grid)
-	    fescala = new Vector2d(stateObs.getWorldDimension().width / stateObs.getObservationGrid().length,
-	    stateObs.getWorldDimension().height / stateObs.getObservationGrid() [0].length);
+		Dimension dimensiones=stateObs.getWorldDimension(); 
+	    fescala = new Vector2d(dimensiones.width / anchura, dimensiones.height / altura);
 	    
-	    
-	    //posicion de los enemigos (con getMovablePositions() nos dan varios Observation, 
-	    //lo convertimos uno a uno con el factor de escala a vectores 2d)
-//	    ArrayList <Observation>[] enemigos_temp= stateObs.getMovablePositions(); //enemigos Observation
-//	    
-//	    if (enemigos_temp!=null) { //si hay enemigos los guardamos
-//		    for (ArrayList<Observation> lista : enemigos_temp){ //iteramos sobre cada celda que tenga enemigos
-//		    	for (Observation obs : lista) { //iteramos por cada enemigo en la celda (en una celda puede haber mas de un enemigo)
-//		    		//cambiamos de escala
-//		    		Vector2d pos=new Vector2d(Math.floor(obs.position.x / fescala.x), Math.floor(obs.position.y / fescala.y));
-//		    		pos_enemigos.add(pos);		
-//		    	} 
-//		    }
-//	    }
+	    Vector2d pos=stateObs.getAvatarPosition();
+		pos_avatar= new Vector2d(pos.x / fescala.x, pos.y / fescala.y);
+		
 	    
 	    //posicion obstaculos (lo mismo que los enemigos pero con obstaculo inmoviles con la funcion getImmovablePositions())
 	    ArrayList <Observation>[] obstaculos_temp= stateObs.getImmovablePositions(); //obstaculos Observation
@@ -99,9 +102,9 @@ public class AgenteDijkstra extends AbstractPlayer {
 	
 	    //SE PUEDE SUPONER QUE SOLO VA A HABER UN PORTAL
 		//Se crea una lista de observaciones de portales, ordenada por cercanía al avatar 
-		ArrayList<Observation>[] posiciones = stateObs.getPortalsPositions(stateObs.getAvatarPosition());
+		portal = stateObs.getPortalsPositions(stateObs.getAvatarPosition())[0].get(0).position;
 		//Seleccionamos el portal mas proximo 
-		portal = posiciones[0].get(0).position;  //cogemos el primer portal (suponemos que es el unico)
+		//portal = posiciones[0].get(0).position;  //cogemos el primer portal (suponemos que es el unico)
 		//convertimos a posiciones
 		portal.x = Math.floor(portal.x / fescala.x);  
 		portal.y = Math.floor(portal.y / fescala.y);
@@ -111,7 +114,7 @@ public class AgenteDijkstra extends AbstractPlayer {
 		
 		//inicializamos abiertos y cerrados
 		abiertos = new PriorityQueue<>();
-        visitados = new ArrayList<>();
+        visitados = new HashSet<>();
         
         //para debugear capas: 
 //        ArrayList <Observation>[] capas_temp = stateObs.getResourcesPositions();
@@ -172,10 +175,14 @@ public class AgenteDijkstra extends AbstractPlayer {
 		//si no tenemos ruta la calculamos (solo el primer act) 
 		if (ruta.isEmpty()) {
 			//posicion del avatar (convertimos getAvatarPosition() con el factor de esacala a un vector2d)
-		    pos_avatar= new Vector2d(stateObs.getAvatarPosition().x / fescala.x,
-		    stateObs.getAvatarPosition().y / fescala.y);
+//		    pos_avatar= new Vector2d(stateObs.getAvatarPosition().x / fescala.x,
+//		    stateObs.getAvatarPosition().y / fescala.y);
+		    
+		    long tInicio = System.nanoTime();
 			ruta=dijkstra(stateObs,elapsedTimer, pos_avatar, portal);
-			
+			long tFin = System.nanoTime();
+			long tiempoTotalms = (tFin - tInicio)/1000000;
+			//System.out.println("Tiempo total " + tiempoTotalms + " en calcular la ruta con Dijkstra");
 			 //no se encuentra solucion
 	        if (ruta.isEmpty()) {
 	            System.out.println("No se encontró camino al portal");
@@ -187,9 +194,9 @@ public class AgenteDijkstra extends AbstractPlayer {
 	
 	public LinkedList<ACTIONS> dijkstra (StateObservation stateObs, ElapsedCpuTimer elapsedTimer, Vector2d posInicial, Vector2d posFinal) {
 		//limpiamos por si acaso
-//		abiertos.clear();
-//	    visitados.clear();
-		int antiguedad=0; 
+		abiertos.clear();
+	    visitados.clear();
+		//int antiguedad=0; 
 		
 		//metemos el primer nodo (nodo raiz)
         Nodo inicial = new Nodo(posInicial,null, 0, 0, Types.ACTIONS.ACTION_NIL, false, false, capasIniciales_rojas, capasIniciales_azules, antiguedad); //inicializamos el nodo inicial
@@ -203,7 +210,7 @@ public class AgenteDijkstra extends AbstractPlayer {
 			Nodo nodo_actual=abiertos.poll(); //coge el primer nodo de abiertos y lo quita
 			
 			//saltamos si ya ha sido visitado	    
-		    while (visitados.contains(nodo_actual)) {
+		    while (visitados.contains(nodo_actual)) { //meterlo directamente en abiertos
 		        nodo_actual = abiertos.poll();
 		        //nodos_expandidos++;
 		        if (nodo_actual == null) break; // por si ya no hay más abiertos
@@ -218,10 +225,9 @@ public class AgenteDijkstra extends AbstractPlayer {
 			if (nodo_actual.posicion.equals(posFinal)) {
 				ruta=reconstruirRuta(nodo_actual); //PREGUNTAR A MEESSSSSSSEEEEEEEJOOOOOOOOOOOO
 				 // Imprimir estadísticas cuando se encuentra la solución
-	            System.out.println("=== RESULTADOS FINALES ===");
 	            System.out.println("Nodos expandidos totales: " + nodos_expandidos);
 	            System.out.println("Tamaño de la ruta calculada: " + ruta.size() + " acciones");
-	            System.out.println("============================");
+	            //System.out.println("Tiempo total " + tiempoTotalms + " en calcular la ruta con Dijkstra");
 	            
 	            break;
 			}
@@ -239,7 +245,6 @@ public class AgenteDijkstra extends AbstractPlayer {
 				//inicializamos sucesor y nuevaPos pero despues se actualizan
 				//Nodo sucesor=new Nodo(nodo_actual.posicion, nodo_actual, 0, 0, Types.ACTIONS.ACTION_NIL, nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules);
 				Nodo sucesor=null;
-				//Vector2d nuevaPos = new Vector2d(0,0);
 
 				if (accion==ACTIONS.ACTION_RIGHT) {				
 					//creamos un nuevo nodo con la accion y posicion correspondiente
@@ -330,8 +335,8 @@ public class AgenteDijkstra extends AbstractPlayer {
 	//función para comprobar si una posicion del tablero es valida (no hay obstaculo y esta dentro del tablero)
 	private boolean esPosicionValida(Nodo nodo, Vector2d pos, StateObservation stateObs) {
 	    //tamaño mapa
-		int anchura = stateObs.getObservationGrid().length;
-	    int altura = stateObs.getObservationGrid()[0].length;
+//		int anchura = stateObs.getObservationGrid().length;
+//	    int altura = stateObs.getObservationGrid()[0].length;
 	    
 		
 		//verificamos los límites del mapa
@@ -341,8 +346,8 @@ public class AgenteDijkstra extends AbstractPlayer {
 	    
 //      Obstáculo - Tipo: 3 → 't' (trampa)
 //      Obstáculo - Tipo: 5 → 'w' (muro normal)
-//      Obstáculo - Tipo: 6 → 'b' (muro azul)
-//      Obstáculo - Tipo: 7 → 'r' (muro rojo)
+//      Obstáculo - Tipo: 7 → 'b' (muro azul)
+//      Obstáculo - Tipo: 6 → 'r' (muro rojo)
 	    
 	    //convertimos la posicion a la escala del mundo
 	    Vector2d posMundo = new Vector2d(pos.x * fescala.x, pos.y * fescala.y);
