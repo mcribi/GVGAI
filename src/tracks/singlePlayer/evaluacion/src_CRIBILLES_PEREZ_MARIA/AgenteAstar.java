@@ -19,19 +19,42 @@ public class AgenteAstar extends AbstractPlayer {
 		Vector2d fescala; //numero de pixeles de cada celda
 		Vector2d portal;//posicion portal
 		Vector2d pos_avatar; //posicion avatar 
-		int nodos_expandidos=0; //contador de nodos expandidos
+		int nodos_expandidos; //contador de nodos expandidos
 		ArrayList <Observation> obstaculos; //observacion obstaculos (objetos inmoviles)
-		ArrayList <Observation> capas=  new ArrayList<>(); //observacion capas
-		HashSet<Vector2d> capasIniciales_rojas = new HashSet<>(); //posiciones de las capas iniciales rojas
-		HashSet<Vector2d> capasIniciales_azules = new HashSet<>(); //posiciones de las capas iniciales azules
+		ArrayList <Observation> capas; //observacion capas
+		HashSet<String> capasIniciales_rojas; //posiciones de las capas iniciales rojas
+		HashSet<String> capasIniciales_azules; //posiciones de las capas iniciales azules
 		
 		//abiertos y cerrados
 		//hacemos una cola con prioridad comparando costes para que se ordenen y saque el que menos coste tenga 
-		PriorityQueue<Nodo> abiertos = new PriorityQueue<>();
-		HashSet<Nodo> cerrados= new HashSet <>();
+		PriorityQueue<Nodo> abiertos;
+		HashSet<Nodo> cerrados;
 		int antiguedad;
 		int anchura;
-	    int altura;
+	    int altura;; 
+	    long tiempoTotalms;
+	    long tInicio; 
+	    long tFin;
+	    
+	    
+	  //para optimizacion: 
+	    private boolean[][] esPosicionValida; // true = transitable, false = obstáculo
+	    private boolean[][] esMuroRojo;      // Posiciones de muros rojos
+	    private boolean[][] esMuroAzul;      // Posiciones de muros azules
+	    
+	     static final Vector2d[] direcciones = { //son constantes, no cambian nunca. Asi no la creamos cada vez
+	    		new Vector2d(1, 0),  // DERECHA
+	    		new Vector2d(-1, 0), // IZQUIERDA
+	    		new Vector2d(0, -1), // ARRIBA
+	    		new Vector2d(0, 1)   // ABAJO
+	    };
+
+		 static final ACTIONS[] ordenAcciones = { //son constantes, no cambian nunca. Asi no la creamos cada vez
+			ACTIONS.ACTION_RIGHT,
+			ACTIONS.ACTION_LEFT,
+			ACTIONS.ACTION_UP,
+			ACTIONS.ACTION_DOWN
+		};
 		
 		/* * initialize all variables for the agent
 		* @param stateObs Observation of the current state.
@@ -64,7 +87,12 @@ public class AgenteAstar extends AbstractPlayer {
 			abiertos = new PriorityQueue<>();
 	        cerrados = new HashSet<>();
 	        antiguedad=0; 
+	        nodos_expandidos=0;
 			obstaculos=  new ArrayList<>();
+			
+			capas=  new ArrayList<>(); //observacion capas
+			capasIniciales_rojas = new HashSet<>(); //posiciones de las capas iniciales rojas
+			capasIniciales_azules = new HashSet<>();
 			
 			
 		   
@@ -81,6 +109,29 @@ public class AgenteAstar extends AbstractPlayer {
 			    }
 		    }
 		    
+		    // Inicialización:
+	        esPosicionValida = new boolean[anchura][altura];
+	        esMuroRojo = new boolean[anchura][altura];
+	        esMuroAzul = new boolean[anchura][altura];
+	        
+	     // Rellenar los mapas (en el constructor):
+		    for (int x = 0; x < anchura; x++) {
+		        for (int y = 0; y < altura; y++) {
+		            esPosicionValida[x][y] = true; // Por defecto, transitable
+		        }
+		    }
+		
+		    for (Observation obs : obstaculos) {
+		        int x = (int)(obs.position.x / fescala.x);
+		        int y = (int)(obs.position.y / fescala.y);
+		        
+		        if (obs.itype == 5) esPosicionValida[x][y] = false;      // Muro normal
+		        else if (obs.itype == 6) esMuroRojo[x][y] = true;        // Muro rojo
+		        else if (obs.itype == 7) esMuroAzul[x][y] = true;        // Muro azul
+		        else if (obs.itype == 3) esPosicionValida[x][y] = false; // Trampa
+		   }
+	        
+		    
 		  //posicion capas (lo mismo que los enemigos pero con las capas con la funcion getResourcesPositions())
 		   //quiero guardar tambien el tipo de capa (roja o azul)
 		   ArrayList <Observation>[] capas_temp= stateObs.getResourcesPositions(); //obstaculos Observation
@@ -95,12 +146,16 @@ public class AgenteAstar extends AbstractPlayer {
 			
 		   //Capas inciales por cada color (solo posiciones)
 		    for (Observation capa : capas) {
-		    	 if (capa.itype == 8) { //si es capa roja 8
-		    		capasIniciales_rojas.add(capa.position); //guardamos la posicion de la capa roja
+		    	//String key = (int)(capa.position.x * fescala.x) + "," + (int)(capa.position.y * fescala.y);
+		    	String key = (int)capa.position.x + "," + (int)capa.position.y; 
+		    	if (capa.itype == 8) { //si es capa roja 8
+		    		capasIniciales_rojas.add(key); //guardamos la posicion de la capa roja
+		    		 //capasIniciales_rojas.add(capa.key); //guardamos la posicion de la capa roja
 		    	}else if (capa.itype == 9) {
-		    		capasIniciales_azules.add(capa.position); //guardamos la posicion de la capa azul
+		    		capasIniciales_azules.add(key);
+		    		//capasIniciales_azules.add(capa.position); //guardamos la posicion de la capa azul
 		    	}	
-		    }     
+		    }    
 
 		}
 		
@@ -109,17 +164,10 @@ public class AgenteAstar extends AbstractPlayer {
 		public ACTIONS act(StateObservation stateObs, ElapsedCpuTimer elapsedTimer) { //devuelve la proxima accion
 			//si no tenemos ruta la calculamos (solo el primer act) 
 			if (ruta.isEmpty()) {
-				//posicion del avatar (convertimos getAvatarPosition() con el factor de esacala a un vector2d)
-//			    pos_avatar= new Vector2d(stateObs.getAvatarPosition().x / fescala.x,
-//			    stateObs.getAvatarPosition().y / fescala.y);
-				long tInicio = System.nanoTime();
+				
 				ruta=a_star(stateObs,elapsedTimer, pos_avatar, portal);
-				long tFin = System.nanoTime();
-				long tiempoTotalms = (tFin - tInicio)/1000000;
-				//System.out.println("Tiempo total " + tiempoTotalms + " en calcular la ruta con Dijkstra");
 				
-				
-				 //no se encuentra solucion
+				//no se encuentra solucion
 		        if (ruta.isEmpty()) {
 		            System.out.println("No se encontró camino al portal");
 		            return ACTIONS.ACTION_NIL; //acción por defecto
@@ -129,7 +177,9 @@ public class AgenteAstar extends AbstractPlayer {
 		}
 		
 		public LinkedList<ACTIONS> a_star (StateObservation stateObs, ElapsedCpuTimer elapsedTimer, Vector2d posInicial, Vector2d posFinal) {
-			
+			//empezamos a medir el tiempo
+			tInicio = System.nanoTime();
+
 			
 			//metemos el primer nodo (nodo raiz) con su heuristica
 	        Nodo inicial = new Nodo(posInicial,null, distanciaManhattan(posInicial, posFinal), 0, Types.ACTIONS.ACTION_NIL, false, false, capasIniciales_rojas, capasIniciales_azules, antiguedad); //inicializamos el nodo inicial
@@ -144,9 +194,8 @@ public class AgenteAstar extends AbstractPlayer {
 				Nodo nodo_actual=abiertos.poll(); //coge el primer nodo de abiertos y lo quita
 				
 				//saltamos si ya ha sido visitado	    
-			    while (cerrados.contains(nodo_actual)) {
-			        nodo_actual = abiertos.poll();
-			        if (nodo_actual == null) break; // por si ya no hay más abiertos
+			    if (cerrados.contains(nodo_actual)) {
+			        continue;
 			    }
 				
 				//sumamos uno a los nodos expandidos
@@ -176,63 +225,109 @@ public class AgenteAstar extends AbstractPlayer {
 				
 				
 				
-				ArrayList<Nodo> sucesores= new ArrayList<>(); //inicializamos la lista de sucesores
-				//expandir sucesores
-				//Quiero que el orden exacto de expansion sea: DERECHA, IZQUIERDA, ARRIBA, ABAJO
+//				ArrayList<Nodo> sucesores= new ArrayList<>(); //inicializamos la lista de sucesores
+//				//expandir sucesores
+//				//Quiero que el orden exacto de expansion sea: DERECHA, IZQUIERDA, ARRIBA, ABAJO
+//				ACTIONS[] ordenAcciones = {ACTIONS.ACTION_RIGHT, ACTIONS.ACTION_LEFT, ACTIONS.ACTION_UP, ACTIONS.ACTION_DOWN};
+//				for ( ACTIONS accion: ordenAcciones) { //iteramos por cada accion disponible
+//					
+//					//inicializamos sucesor y nuevaPos pero despues se actualizan
+//					Nodo sucesor=null;
+//
+//					if (accion==ACTIONS.ACTION_RIGHT) {				
+//						//creamos un nuevo nodo con la accion y posicion correspondiente
+//						Vector2d nuevaPos = new Vector2d(nodo_actual.posicion.x+1, nodo_actual.posicion.y);
+//						if (esPosicionValida(nodo_actual, nuevaPos)) {
+//							int nuevoCoste = nodo_actual.coste + 1;
+//							int heuristica = distanciaManhattan(nuevaPos, posFinal);
+//							sucesor = new Nodo(nuevaPos, nodo_actual, heuristica, nuevoCoste, accion, nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules, antiguedad);
+//							sucesor.f=sucesor.coste + heuristica;
+//							//antiguedad++;
+//							sucesores.add(sucesor);
+//						}
+//					}
+//					else if (accion==ACTIONS.ACTION_LEFT) {				
+//						//creamos un nuevo nodo con la accion y posicion correspondiente
+//						Vector2d nuevaPos = new Vector2d(nodo_actual.posicion.x-1, nodo_actual.posicion.y);
+//						if (esPosicionValida(nodo_actual, nuevaPos)) {
+//							int nuevoCoste = nodo_actual.coste + 1;
+//							int heuristica = distanciaManhattan(nuevaPos, posFinal);
+//							sucesor = new Nodo(nuevaPos, nodo_actual, heuristica, nuevoCoste, accion, nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules, antiguedad);
+//							sucesor.f=sucesor.coste + heuristica;
+//							sucesores.add(sucesor);
+//							//antiguedad++;
+//						}
+//					}
+//					else if (accion==ACTIONS.ACTION_UP) {				
+//						//creamos un nuevo nodo con la accion y posicion correspondiente
+//						Vector2d nuevaPos = new Vector2d(nodo_actual.posicion.x, nodo_actual.posicion.y-1);
+//						if (esPosicionValida(nodo_actual, nuevaPos)) {
+//							int nuevoCoste = nodo_actual.coste + 1;
+//							int heuristica = distanciaManhattan(nuevaPos, posFinal);
+//							sucesor = new Nodo(nuevaPos, nodo_actual, heuristica, nuevoCoste, accion, nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules, antiguedad);
+//							sucesor.f=sucesor.coste + heuristica;
+//							sucesores.add(sucesor);
+//							//antiguedad++;
+//						}
+//					}
+//					else if (accion==ACTIONS.ACTION_DOWN) {				
+//						//creamos un nuevo nodo con la accion y posicion correspondiente
+//						Vector2d nuevaPos = new Vector2d(nodo_actual.posicion.x, nodo_actual.posicion.y+1);
+//						if (esPosicionValida(nodo_actual, nuevaPos)) {
+//							int nuevoCoste = nodo_actual.coste + 1;
+//							int heuristica = distanciaManhattan(nuevaPos, posFinal);
+//							sucesor = new Nodo(nuevaPos, nodo_actual, heuristica, nuevoCoste, accion, nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules, antiguedad);
+//							sucesor.f=sucesor.coste + heuristica;
+//							sucesores.add(sucesor);
+//							//antiguedad++;
+//						}
+//					}
+				
+				ArrayList<Nodo> sucesores = new ArrayList<>(4); // Tamaño inicial para 4 direcciones
 				ACTIONS[] ordenAcciones = {ACTIONS.ACTION_RIGHT, ACTIONS.ACTION_LEFT, ACTIONS.ACTION_UP, ACTIONS.ACTION_DOWN};
-				for ( ACTIONS accion: ordenAcciones) { //iteramos por cada accion disponible
-					
-					//inicializamos sucesor y nuevaPos pero despues se actualizan
-					Nodo sucesor=null;
+				Vector2d[] offsets = {new Vector2d(1,0), new Vector2d(-1,0), new Vector2d(0,-1), new Vector2d(0,1)};
 
-					if (accion==ACTIONS.ACTION_RIGHT) {				
-						//creamos un nuevo nodo con la accion y posicion correspondiente
-						Vector2d nuevaPos = new Vector2d(nodo_actual.posicion.x+1, nodo_actual.posicion.y);
-						if (esPosicionValida(nodo_actual, nuevaPos, stateObs)) {
-							int nuevoCoste = nodo_actual.coste + 1;
-							int heuristica = distanciaManhattan(nuevaPos, posFinal);
-							sucesor = new Nodo(nuevaPos, nodo_actual, heuristica, nuevoCoste, accion, nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules, antiguedad);
-							sucesor.f=sucesor.coste + heuristica;
-							//antiguedad++;
-							sucesores.add(sucesor);
-						}
-					}
-					else if (accion==ACTIONS.ACTION_LEFT) {				
-						//creamos un nuevo nodo con la accion y posicion correspondiente
-						Vector2d nuevaPos = new Vector2d(nodo_actual.posicion.x-1, nodo_actual.posicion.y);
-						if (esPosicionValida(nodo_actual, nuevaPos, stateObs)) {
-							int nuevoCoste = nodo_actual.coste + 1;
-							int heuristica = distanciaManhattan(nuevaPos, posFinal);
-							sucesor = new Nodo(nuevaPos, nodo_actual, heuristica, nuevoCoste, accion, nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules, antiguedad);
-							sucesor.f=sucesor.coste + heuristica;
-							sucesores.add(sucesor);
-							//antiguedad++;
-						}
-					}
-					else if (accion==ACTIONS.ACTION_UP) {				
-						//creamos un nuevo nodo con la accion y posicion correspondiente
-						Vector2d nuevaPos = new Vector2d(nodo_actual.posicion.x, nodo_actual.posicion.y-1);
-						if (esPosicionValida(nodo_actual, nuevaPos, stateObs)) {
-							int nuevoCoste = nodo_actual.coste + 1;
-							int heuristica = distanciaManhattan(nuevaPos, posFinal);
-							sucesor = new Nodo(nuevaPos, nodo_actual, heuristica, nuevoCoste, accion, nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules, antiguedad);
-							sucesor.f=sucesor.coste + heuristica;
-							sucesores.add(sucesor);
-							//antiguedad++;
-						}
-					}
-					else if (accion==ACTIONS.ACTION_DOWN) {				
-						//creamos un nuevo nodo con la accion y posicion correspondiente
-						Vector2d nuevaPos = new Vector2d(nodo_actual.posicion.x, nodo_actual.posicion.y+1);
-						if (esPosicionValida(nodo_actual, nuevaPos, stateObs)) {
-							int nuevoCoste = nodo_actual.coste + 1;
-							int heuristica = distanciaManhattan(nuevaPos, posFinal);
-							sucesor = new Nodo(nuevaPos, nodo_actual, heuristica, nuevoCoste, accion, nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules, antiguedad);
-							sucesor.f=sucesor.coste + heuristica;
-							sucesores.add(sucesor);
-							//antiguedad++;
-						}
-					}
+				// Variables precalculadas para reutilización
+				final int costeActual = nodo_actual.coste;
+				final boolean tieneCapaRoja = nodo_actual.capa_roja;
+				final boolean tieneCapaAzul = nodo_actual.capa_azul;
+				final HashSet<String> capasRojas = nodo_actual.capas_rojas;
+				final HashSet<String> capasAzules = nodo_actual.capas_azules;
+
+				for (int i = 0; i < ordenAcciones.length; i++) {
+				    // 1. Calcular nueva posición (optimizado)
+				    Vector2d nuevaPos = new Vector2d(
+				        nodo_actual.posicion.x + offsets[i].x,
+				        nodo_actual.posicion.y + offsets[i].y
+				    );
+				    
+				    // 2. Validar posición
+				    if (!esPosicionValida(nodo_actual, nuevaPos)) continue;
+				    
+				    // 3. Calcular heurística y coste
+				    int heuristica = Math.abs((int)nuevaPos.x - (int)posFinal.x) + 
+				                     Math.abs((int)nuevaPos.y - (int)posFinal.y);
+				    int nuevoCoste = costeActual + 1;
+				    
+				    // 4. Crear nodo (optimizado)
+				    Nodo sucesor = new Nodo(
+				        nuevaPos,
+				        nodo_actual,
+				        heuristica,
+				        nuevoCoste,
+				        ordenAcciones[i],
+				        tieneCapaRoja,
+				        tieneCapaAzul,
+				        new HashSet<>(capasRojas), // Copia defensiva
+				        new HashSet<>(capasAzules),
+				        antiguedad++
+				    );
+				    sucesor.f = nuevoCoste + heuristica;
+				    
+				    sucesores.add(sucesor);
+				}
+
+				// Aquí continúan tus ifs originales sin cambios
 					
 
 					
@@ -291,7 +386,10 @@ public class AgenteAstar extends AbstractPlayer {
 				
 				//por cada sucesor
 				
-			}
+			//}
+			tFin = System.nanoTime();
+			tiempoTotalms = (tFin - tInicio) / 1_000_000;
+		    System.out.println("Tiempo total A estrella: " + tiempoTotalms + " ms");
 		
 		
 			return ruta; //devolvemos la ruta con todos los nodos hasta la meta
@@ -310,72 +408,104 @@ public class AgenteAstar extends AbstractPlayer {
 			return ruta; 
 		}
 		
-		//función para comprobar si una posicion del tablero es valida (no hay obstaculo y esta dentro del tablero)
-		private boolean esPosicionValida(Nodo nodo, Vector2d pos, StateObservation stateObs) {
-		    //tamaño mapa
-			int anchura = stateObs.getObservationGrid().length;
-		    int altura = stateObs.getObservationGrid()[0].length;
-			
-			//verificamos los límites del mapa
-		    if (pos.x<0 || pos.y<0 || pos.x>= anchura || pos.y>= altura) {
+//		//función para comprobar si una posicion del tablero es valida (no hay obstaculo y esta dentro del tablero)
+//		private boolean esPosicionValida(Nodo nodo, Vector2d pos, StateObservation stateObs) {
+//		    //tamaño mapa
+//			int anchura = stateObs.getObservationGrid().length;
+//		    int altura = stateObs.getObservationGrid()[0].length;
+//			
+//			//verificamos los límites del mapa
+//		    if (pos.x<0 || pos.y<0 || pos.x>= anchura || pos.y>= altura) {
+//		        return false;
+//		    }
+//		    
+////	      Obstáculo - Tipo: 3 → 't' (trampa)
+////	      Obstáculo - Tipo: 5 → 'w' (muro normal)
+////	      Obstáculo - Tipo: 6 → 'b' (muro azul)
+////	      Obstáculo - Tipo: 7 → 'r' (muro rojo)
+//		    
+//		    //convertimos la posicion a la escala del mundo
+//		    Vector2d posMundo = new Vector2d(pos.x * fescala.x, pos.y * fescala.y);
+//		    
+//		    //verificamos si hay obstáculos en esa posición
+//		    for (Observation obstaculo : obstaculos) { //como tenemos los obstaculos en una lista
+//		        if (obstaculo.position.equals(posMundo)) {
+//			    	if (obstaculo.itype == 5) { //si es un muro normal
+//			            return false;
+//			        }else if (obstaculo.itype == 6) { //si es muro rojo
+//			        	return nodo.capa_roja; //si el nodo tiene capa roja
+//			        }else if (obstaculo.itype == 7) { //si es muro azul
+//			        	return nodo.capa_azul; //si el nodo tiene capa azul
+//			        }else if (obstaculo.itype == 3) { //si es trampa
+//			        	return false;
+//			        }
+//			        	
+//		        }
+//
+//		    }
+//		    
+//		    return true;
+//		}
+		
+		private boolean esPosicionValida(Nodo nodo, Vector2d pos) {
+		    // Verificar límites del mapa
+		    if (pos.x < 0 || pos.y < 0 || pos.x >= anchura || pos.y >= altura) {
 		        return false;
 		    }
 		    
-//	      Obstáculo - Tipo: 3 → 't' (trampa)
-//	      Obstáculo - Tipo: 5 → 'w' (muro normal)
-//	      Obstáculo - Tipo: 6 → 'b' (muro azul)
-//	      Obstáculo - Tipo: 7 → 'r' (muro rojo)
+		    int x = (int)pos.x;
+		    int y = (int)pos.y;
 		    
-		    //convertimos la posicion a la escala del mundo
-		    Vector2d posMundo = new Vector2d(pos.x * fescala.x, pos.y * fescala.y);
+		    // Muro rojo (solo pasable con capa roja)
+		    if (esMuroRojo[x][y]) return nodo.capa_roja;
 		    
-		    //verificamos si hay obstáculos en esa posición
-		    for (Observation obstaculo : obstaculos) { //como tenemos los obstaculos en una lista
-		        if (obstaculo.position.equals(posMundo)) {
-			    	if (obstaculo.itype == 5) { //si es un muro normal
-			            return false;
-			        }else if (obstaculo.itype == 6) { //si es muro rojo
-			        	return nodo.capa_roja; //si el nodo tiene capa roja
-			        }else if (obstaculo.itype == 7) { //si es muro azul
-			        	return nodo.capa_azul; //si el nodo tiene capa azul
-			        }else if (obstaculo.itype == 3) { //si es trampa
-			        	return false;
-			        }
-			        	
-		        }
-
-		    }
+		    // Muro azul (solo pasable con capa azul)
+		    if (esMuroAzul[x][y]) return nodo.capa_azul;
 		    
-		    return true;
+		    // Caso general (trampas/muros normales)
+		    return esPosicionValida[x][y];
 		}
 		
-		public void actualizarCapas(Nodo nodo_actual) {
-			
-			//primero cambiamos la posicion del nodo actual a la escala del mundo
-			Vector2d posMundo = new Vector2d(nodo_actual.posicion.x * fescala.x,nodo_actual.posicion.y * fescala.y);
-//			System.out.println("Posición del nodo actual: " + nodo_actual.posicion + 
-//					 ", Capa roja: " + nodo_actual.capa_roja + 
-//					 ", Capa azul: " + nodo_actual.capa_azul);
-			//si la casilla donde estamos es capa actualizamos las capas del nodo
-			for (Vector2d capa : nodo_actual.capas_azules) { //iteramos por cada capa
-				if (capa.equals(posMundo)) { //si la posicion del nodo es igual a la de la capa
-					nodo_actual.capa_azul=true; 
-					nodo_actual.capa_roja=false; //no se pueden tener las dos a la vez
-					//eliminamos la capa azul de la lista porque se elimina al recogerla
-					nodo_actual.capas_azules.remove(capa);
-					break; //salimos del bucle si ya hemos encontrado la capa (solo hay una capa por posicion)
-				}
-			}
-			
-			for (Vector2d capa : nodo_actual.capas_rojas) { //iteramos por cada capa
-				if (capa.equals(posMundo)) { //si la posicion del nodo es igual a la de la capa
-					nodo_actual.capa_roja=true;
-					nodo_actual.capa_azul=false; //no se pueden tener las dos a la vez
-					//eliminamos la capa roja de la lista porque se elimina al recogerla
-					nodo_actual.capas_rojas.remove(capa);
-					break; //salimos del bucle si ya hemos encontrado la capa (solo hay una capa por posicion)
-				}
-			}
+//		public void actualizarCapas(Nodo nodo_actual) {
+//			
+//			//primero cambiamos la posicion del nodo actual a la escala del mundo
+//			Vector2d posMundo = new Vector2d(nodo_actual.posicion.x * fescala.x,nodo_actual.posicion.y * fescala.y);
+////			System.out.println("Posición del nodo actual: " + nodo_actual.posicion + 
+////					 ", Capa roja: " + nodo_actual.capa_roja + 
+////					 ", Capa azul: " + nodo_actual.capa_azul);
+//			//si la casilla donde estamos es capa actualizamos las capas del nodo
+//			for (Vector2d capa : nodo_actual.capas_azules) { //iteramos por cada capa
+//				if (capa.equals(posMundo)) { //si la posicion del nodo es igual a la de la capa
+//					nodo_actual.capa_azul=true; 
+//					nodo_actual.capa_roja=false; //no se pueden tener las dos a la vez
+//					//eliminamos la capa azul de la lista porque se elimina al recogerla
+//					nodo_actual.capas_azules.remove(capa);
+//					break; //salimos del bucle si ya hemos encontrado la capa (solo hay una capa por posicion)
+//				}
+//			}
+//			
+//			for (Vector2d capa : nodo_actual.capas_rojas) { //iteramos por cada capa
+//				if (capa.equals(posMundo)) { //si la posicion del nodo es igual a la de la capa
+//					nodo_actual.capa_roja=true;
+//					nodo_actual.capa_azul=false; //no se pueden tener las dos a la vez
+//					//eliminamos la capa roja de la lista porque se elimina al recogerla
+//					nodo_actual.capas_rojas.remove(capa);
+//					break; //salimos del bucle si ya hemos encontrado la capa (solo hay una capa por posicion)
+//				}
+//			}
+//		}
+		
+		public void actualizarCapas(Nodo nodo) {
+		    // Usar misma conversión que en inicialización
+		    String posKey = (int)(nodo.posicion.x * fescala.x) + "," + (int)(nodo.posicion.y * fescala.y);
+		    
+		    if (nodo.capas_azules.remove(posKey)) {
+		        nodo.capa_azul = true;
+		        nodo.capa_roja = false;
+		    } else if (nodo.capas_rojas.remove(posKey)) {
+		        nodo.capa_roja = true;
+		        nodo.capa_azul = false;
+		    }
 		}
 		
 		
