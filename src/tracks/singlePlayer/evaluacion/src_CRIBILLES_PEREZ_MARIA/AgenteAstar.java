@@ -152,10 +152,13 @@ public class AgenteAstar extends AbstractPlayer {
 				//sumamos uno a los nodos expandidos
 				nodos_expandidos++; //el nodo actual tambien es expandido
 				
+				
+				
 				//comprobar si el nodo en el que esta el avatar es el portal
 				//si actual==objetivo (para Vector2d se usa equals())
 				if (nodo_actual.posicion.equals(posFinal)) {
-					ruta=reconstruirRuta(nodo_actual); //PREGUNTAR A MEESSSSSSSEEEEEEEJOOOOOOOOOOOO
+					cerrados.add(nodo_actual); //metermos el ultimo nodo en cerrados
+					ruta=reconstruirRuta(nodo_actual); 
 					 // Imprimir estadísticas cuando se encuentra la solución
 		            System.out.println("=== RESULTADOS FINALES ===");
 		            System.out.println("Nodos expandidos totales: " + nodos_expandidos);
@@ -167,9 +170,13 @@ public class AgenteAstar extends AbstractPlayer {
 		            break;
 				}
 				
-				//lo añadimos a visitados y expandimos sus suscesores
+				//quitamos de abiertos y lo metemos en cerrados
+				//abiertos.remove(nodo_actual);
 				cerrados.add(nodo_actual);
 				
+				
+				
+				ArrayList<Nodo> sucesores= new ArrayList<>(); //inicializamos la lista de sucesores
 				//expandir sucesores
 				//Quiero que el orden exacto de expansion sea: DERECHA, IZQUIERDA, ARRIBA, ABAJO
 				ACTIONS[] ordenAcciones = {ACTIONS.ACTION_RIGHT, ACTIONS.ACTION_LEFT, ACTIONS.ACTION_UP, ACTIONS.ACTION_DOWN};
@@ -184,8 +191,10 @@ public class AgenteAstar extends AbstractPlayer {
 						if (esPosicionValida(nodo_actual, nuevaPos, stateObs)) {
 							int nuevoCoste = nodo_actual.coste + 1;
 							int heuristica = distanciaManhattan(nuevaPos, posFinal);
-							sucesor = new Nodo(nuevaPos, nodo_actual, nuevoCoste+heuristica, nuevoCoste, accion, nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules, antiguedad);
-							antiguedad++;
+							sucesor = new Nodo(nuevaPos, nodo_actual, heuristica, nuevoCoste, accion, nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules, antiguedad);
+							sucesor.f=sucesor.coste + heuristica;
+							//antiguedad++;
+							sucesores.add(sucesor);
 						}
 					}
 					else if (accion==ACTIONS.ACTION_LEFT) {				
@@ -194,8 +203,10 @@ public class AgenteAstar extends AbstractPlayer {
 						if (esPosicionValida(nodo_actual, nuevaPos, stateObs)) {
 							int nuevoCoste = nodo_actual.coste + 1;
 							int heuristica = distanciaManhattan(nuevaPos, posFinal);
-							sucesor = new Nodo(nuevaPos, nodo_actual, nuevoCoste+heuristica, nuevoCoste, accion, nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules, antiguedad);
-							antiguedad++;
+							sucesor = new Nodo(nuevaPos, nodo_actual, heuristica, nuevoCoste, accion, nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules, antiguedad);
+							sucesor.f=sucesor.coste + heuristica;
+							sucesores.add(sucesor);
+							//antiguedad++;
 						}
 					}
 					else if (accion==ACTIONS.ACTION_UP) {				
@@ -204,8 +215,10 @@ public class AgenteAstar extends AbstractPlayer {
 						if (esPosicionValida(nodo_actual, nuevaPos, stateObs)) {
 							int nuevoCoste = nodo_actual.coste + 1;
 							int heuristica = distanciaManhattan(nuevaPos, posFinal);
-							sucesor = new Nodo(nuevaPos, nodo_actual, nuevoCoste+heuristica, nuevoCoste, accion, nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules, antiguedad);
-							antiguedad++;
+							sucesor = new Nodo(nuevaPos, nodo_actual, heuristica, nuevoCoste, accion, nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules, antiguedad);
+							sucesor.f=sucesor.coste + heuristica;
+							sucesores.add(sucesor);
+							//antiguedad++;
 						}
 					}
 					else if (accion==ACTIONS.ACTION_DOWN) {				
@@ -214,44 +227,62 @@ public class AgenteAstar extends AbstractPlayer {
 						if (esPosicionValida(nodo_actual, nuevaPos, stateObs)) {
 							int nuevoCoste = nodo_actual.coste + 1;
 							int heuristica = distanciaManhattan(nuevaPos, posFinal);
-							sucesor = new Nodo(nuevaPos, nodo_actual, nuevoCoste+heuristica, nuevoCoste, accion, nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules, antiguedad);
-							antiguedad++;
+							sucesor = new Nodo(nuevaPos, nodo_actual, heuristica, nuevoCoste, accion, nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules, antiguedad);
+							sucesor.f=sucesor.coste + heuristica;
+							sucesores.add(sucesor);
+							//antiguedad++;
 						}
 					}
 					
 
 					
-					if (sucesor != null) { //si el sucesor es valido
+					for (Nodo suc : sucesores) { //si el sucesor es valido
 					    //calculamos el nuevo coste desde el nodo actual
 					    int nuevoG = nodo_actual.coste + 1;	
 
-					    if (cerrados.contains(sucesor)) {
-					        if (nuevoG < sucesor.coste) {
-					            //hemos encontrado un mejor camino, actualizamos
-					            cerrados.remove(sucesor);
-					            sucesor.padre = nodo_actual;
-					            sucesor.coste = nuevoG;
-					            sucesor.f = sucesor.coste + distanciaManhattan(sucesor.posicion, posFinal);
-					            actualizarCapas(sucesor);
-					            abiertos.add(sucesor);
-					            //antiguedad++;
-					        }
-					    } else if (abiertos.contains(sucesor)) {
-					        if (nuevoG < sucesor.coste) {
-					            // Ya está en abiertos pero encontramos un camino mejor
-					            sucesor.padre = nodo_actual;
-					            sucesor.coste = nuevoG;
-					            sucesor.f = sucesor.coste + distanciaManhattan(sucesor.posicion, posFinal);
-					    		// No es necesario volver a añadirlo a abiertos, ya está allí
+					    if (cerrados.contains(suc)) {
+					       for (Nodo cer:cerrados) {
+					    	   if (cer.equals(suc)) {
+							    	if (nuevoG < cer.coste) {
+							            //hemos encontrado un mejor camino, actualizamos
+							            cerrados.remove(cer);
+							            suc.padre = nodo_actual;
+							            suc.coste = nuevoG;
+							            suc.f = suc.coste + distanciaManhattan(suc.posicion, posFinal);
+							            actualizarCapas(suc);
+							            abiertos.add(suc);
+							            antiguedad++;
+							        }
+							    	break;
+							    	
+					    	   }
+					       }
+					    } else if (abiertos.contains(suc)) {
+					        for (Nodo ab:abiertos) {
+					        	if (ab.equals(suc)) {
+						        	if (nuevoG < ab.coste) {
+						        		abiertos.remove(ab);
+						        		// Ya está en abiertos pero encontramos un camino mejor
+							        	suc.padre = nodo_actual;
+							        	suc.coste = nuevoG;
+							        	suc.f = suc.coste + distanciaManhattan(suc.posicion, posFinal);
+							            actualizarCapas(suc);
+							            suc.antiguedad = nodo_actual.antiguedad; // Actualizamos la antigüedad
+							            actualizarCapas(suc);
+							            abiertos.add(suc);
+							            antiguedad++; 
+							        }
+						        	break;
+					        	}
 					        }
 					    } else {
 					        // Nodo nuevo, se configura todo y se añade a abiertos
-					        sucesor.padre = nodo_actual;
-					        sucesor.coste = nuevoG;
-					        sucesor.f = sucesor.coste + distanciaManhattan(sucesor.posicion, posFinal);
-					        actualizarCapas(sucesor);
-					        abiertos.add(sucesor);
-					        //antiguedad++;
+					    	suc.padre = nodo_actual;
+					    	suc.coste = nuevoG;
+					    	suc.f = suc.coste + distanciaManhattan(suc.posicion, posFinal);
+					        actualizarCapas(suc);
+					        abiertos.add(suc);
+					        antiguedad++;
 					    }
 					}
 
