@@ -189,138 +189,104 @@ public class AgenteAstar extends AbstractPlayer {
 			return (ruta.removeFirst()); //si la ruta ya esta calculada devolvemos (y eliminamos de la linkedlist) la primera accion
 		}
 		
-		public LinkedList<ACTIONS> a_star (StateObservation stateObs, ElapsedCpuTimer elapsedTimer, Vector2d posInicial, Vector2d posFinal) {
-			//empezamos a medir el tiempo
-			tInicio = System.nanoTime();
+		public LinkedList<ACTIONS> a_star(StateObservation stateObs, ElapsedCpuTimer elapsedTimer, Vector2d posInicial, Vector2d posFinal) {
+		    tInicio = System.nanoTime();
+		    
+		    //primer nodo
+		    Nodo inicial = new Nodo(posInicial, null, distanciaManhattan(posInicial, posFinal), 0, Types.ACTIONS.ACTION_NIL, false, false, capasIniciales_rojas, capasIniciales_azules, antiguedad++);
+		    abiertos.add(inicial); //lo añadimos a abiertos
 
-			//metemos el primer nodo (nodo raiz): con padre null, sin coste, sin heuristica (distancia manhattan), sin accion padre, sin capa roja ni azul
-	        Nodo inicial = new Nodo(posInicial,null, distanciaManhattan(posInicial, posFinal), 0, Types.ACTIONS.ACTION_NIL, false, false, capasIniciales_rojas, capasIniciales_azules, antiguedad); //inicializamos el nodo inicial
-	        abiertos.add(inicial);//lo añadimos a abiertos
-	        antiguedad++;//aumentamos la antiguedad del nodo inicial (cada nodo va a tener una antiguedad diferente)
-		
-			
-			while (!abiertos.isEmpty()) {  //mientras que queden nodos por visitar
-				//actual: nodo de menor f=g+h en abiertos
-				Nodo nodo_actual=abiertos.poll(); //coge el primer nodo de abiertos y lo quita
-				
-				//saltamos si ya esta en cerrados	    
-			    if (cerrados.contains(nodo_actual)) {
-			    	cerrados.remove(nodo_actual); //si ya esta en cerrados lo quitamos
-			        continue;
-			    }
-				
-				//sumamos uno a los nodos expandidos
-				nodos_expandidos++; //el nodo actual tambien es expandido
+		    while (!abiertos.isEmpty()) { //mientras que queden nodos por visitar en la lista de abiertos
+		        Nodo nodo_actual = abiertos.poll(); //mejor candidato (menor f por ser priority queue)
+		        
+		        //si esta en cerrados ya pasamos
+		        if (cerrados.contains(nodo_actual)) continue;
+		        
+		        //lo añadimos a cerrados
+		        cerrados.add(nodo_actual);
+		        
+		        //se ha expandido un nodo mas
+		        nodos_expandidos++;
 
-				//comprobar si el nodo en el que esta el avatar es el portal
-				//si actual==objetivo (para Vector2d se usa equals())
-				if (nodo_actual.posicion.equals(posFinal)) {
-					cerrados.add(nodo_actual); //metermos el ultimo nodo en cerrados
-					ruta=reconstruirRuta(nodo_actual); 
-					
-					//resultados cuando se encuentra la solución
-		            System.out.println("Nodos expandidos totales: " + nodos_expandidos);
-		            System.out.println("Tamaño de la ruta calculada: " + ruta.size() + " acciones");
-		            System.out.println("Tamaño del conjunto cerrados: " + cerrados.size());
-		            System.out.println("Nodos restantes en abiertos: " + abiertos.size());
+		        //comprobamos si es el portal
+		        if (nodo_actual.posicion.equals(posFinal)) {
+		            ruta = reconstruirRuta(nodo_actual);
+		            imprimirResultados(); //imprimimos los resultados
+		            break; //salimos del bucle si hemos encontrado la ruta
+		        }
+
+		        //expandimos sucesores
+		        for (int i = 0; i < ordenAcciones.length; i++) { //iteramos por cada accion disponible
+		            //nueva posicion
+		        	Vector2d nuevaPos = new Vector2d(nodo_actual.posicion.x + direcciones[i].x, nodo_actual.posicion.y + direcciones[i].y);
 		            
-		            break;
-				}
-				
-				//lo metemos en cerrados
-				cerrados.add(nodo_actual);
-				
-				//expandimos sucesores
-				ArrayList<Nodo> sucesores = new ArrayList<>(4); //4 direcciones
+		        	//comprobamos porque si no es valida pasamos
+		            if (!esPosicionValida(nodo_actual, nuevaPos)) continue;
 
-				for (int i = 0; i < ordenAcciones.length; i++) { //en el orden de expansion predeterminado
-				    //calculamos la nueva posicion con el desplazamiento definido antes
-				    Vector2d nuevaPos = new Vector2d(nodo_actual.posicion.x + direcciones[i].x, nodo_actual.posicion.y + direcciones[i].y);
-				    
-				    //si no es valida la posicion pasamos sin perder tiempo
-				    if (!esPosicionValida(nodo_actual, nuevaPos)) continue;
-				    
-				    //heuristica y coste
-				    int heuristica = distanciaManhattan(nuevaPos, posFinal); 
-				    int nuevoCoste = nodo_actual.coste + 1;
-				    
-				    //nodo sucesor
-				    Nodo sucesor = new Nodo(nuevaPos, nodo_actual, heuristica, nuevoCoste, ordenAcciones[i], nodo_actual.capa_roja, nodo_actual.capa_azul, nodo_actual.capas_rojas, nodo_actual.capas_azules, antiguedad++);
-				    sucesor.f = nuevoCoste + heuristica; //actualizamos f
-				    
-				    sucesores.add(sucesor);
-				}
-				
-				//vamos sucesor por sucesor
-				for (Nodo suc : sucesores) { 
-				    int nuevoG = nodo_actual.coste + 1; //el nuevo coste es añadiendo 1 (distancia del sucesor al padre)
-				    boolean enCerrados = false; // bool para comprobar que esta en cerrados
-				    Nodo nodoExistente = null; // nodo existente para actualizarlo
+		            //expandimos de forma optimizada los sucesores en el orden de acciones predeterminado
+		            procesarSucesor(nodo_actual, nuevaPos, ordenAcciones[i], posFinal);
+		        }
+		    }
+		    
+		    //medida de tiempos
+		    tiempoTotalms = (System.nanoTime() - tInicio) / 1000000;
+		    System.out.println("Tiempo total A*: " + tiempoTotalms + " ms");
+		    
+		    //devolvemos ruta
+		    return ruta;
+		}
 
-				    //buscamos en cerrados
-				    for (Nodo cer : cerrados) {
-				        if (cer.equals(suc)) { //si el nodo ya existe en cerrados
-				            enCerrados = true; //ponemos el bool a true
-				            nodoExistente = cer; // guardamos el nodo existente
-				            break; //salimos
-				        }
-				    }
+		//funcion para expandir sucesores de forma eficiente
+		private void procesarSucesor(Nodo padre, Vector2d nuevaPos, ACTIONS accion, Vector2d posFinal) {
+		    int nuevoG = padre.coste + 1; //el coste + 1(distancia entre padre y sucesor)
+		    int heuristica = distanciaManhattan(nuevaPos, posFinal); 
+		    Nodo sucesor = new Nodo(nuevaPos, padre, heuristica, nuevoG, accion, padre.capa_roja, padre.capa_azul, padre.capas_rojas, padre.capas_azules, antiguedad++);
+		    sucesor.f = nuevoG + heuristica; //actualizamos f
 
-				    if (enCerrados) { //si el nodo ya existe en cerrados
-				        if (nuevoG < nodoExistente.coste) { // y si el nuevo coste es menor que el existente
-				            cerrados.remove(nodoExistente); //lo quitamos de cerrados
-				            nodoExistente.padre = nodo_actual; // actualizamos 
-				            nodoExistente.coste = nuevoG;
-				            nodoExistente.f = nuevoG + distanciaManhattan(nodoExistente.posicion, posFinal);
-				            actualizarCapas(nodoExistente);
-				            abiertos.add(nodoExistente); //lo añadimos a abiertos
-				        }
-				    } else { //si no esta en cerrados
-				        //buscamos en abiertos
-				        boolean enAbiertos = false; //bool para comprobar que esta en abiertos
-				        for (Nodo ab : abiertos) { //buscamos en abiertos
-				            if (ab.equals(suc)) { // si el nodo ya existe en abiertos
-				                enAbiertos = true; //actualizamos bool porque lo hemos encontrado en abiertos
-				                nodoExistente = ab; //guardamos el nodo existente
-				                break;
-				            }
-				        }
+		    // es una optimizacion para buscar de forma rapida
+		    Nodo existente = buscarNodoExistente(sucesor);
+		    
+		    if (existente != null) { //si se ha encontrado el nodo  (ya sea en abiertos o en cerrados)
+		        if (nuevoG < existente.coste) { //si el nuevo camino es de coste menor 
+		            existente.padre = padre; //actualizamos
+		            existente.coste = nuevoG;
+		            existente.f = nuevoG + heuristica;
+		            actualizarCapas(existente);
+		            
+		            if (cerrados.contains(existente)) { //si esta en cerrados
+		                cerrados.remove(existente);
+		                abiertos.add(existente); //lo movemos a abiertos (y lo quitamos de cerrados) porque tiene un mejor camino
+		            } else { //si estaba en abiertos
+		            	//lo reinsertamos para que se reordene en la cola con prioridad por f como tenemos (y desempates)
+		                abiertos.remove(existente); 
+		                abiertos.add(existente);
+		            }
+		        }
+		    } else { //si no ha sido encontrado ya de antes
+		        actualizarCapas(sucesor);
+		        abiertos.add(sucesor); //simplemente se añade a abiertos
+		    }
+		}
 
-				        if (enAbiertos) { //si el nodo ya existe en abiertos
-				            if (nuevoG < nodoExistente.coste) { //si el nuevo coste es menor que el existente
-				                nodoExistente.padre = nodo_actual; //actualizamos
-				                nodoExistente.coste = nuevoG;
-				                nodoExistente.f = nuevoG + distanciaManhattan(nodoExistente.posicion, posFinal);
-				                actualizarCapas(nodoExistente);
-				                //para reordenar en la cola de prioridad
-				                abiertos.remove(nodoExistente);
-				                abiertos.add(nodoExistente);
-				            }
-				        } else {
-				            //nuevo nodo
-				            suc.padre = nodo_actual;
-				            suc.coste = nuevoG;
-				            suc.f = nuevoG + distanciaManhattan(suc.posicion, posFinal);
-				            actualizarCapas(suc);
-				            abiertos.add(suc); //lo añadimos a abiertos
-				        }
-				    }
-				}
-				
-
-				
-			}
-			
-			//tiempo final y total
-			tFin = System.nanoTime();
-			tiempoTotalms = (tFin - tInicio) / 1000000;
-			
-			//imprimimos tiempo
-		    System.out.println("Tiempo total A estrella: " + tiempoTotalms + " ms");
+		//funcion auxiliar para buscar nodos existentes
+		private Nodo buscarNodoExistente(Nodo buscado) {
+		    //primero buscamos en abiertos (es lo mas probable)
+		    for (Nodo ab : abiertos) {
+		        if (ab.equals(buscado)) return ab;
+		    }
+		    //luego buscamos en cerrados si no lo hemos encontrado en abiertos
+		    for (Nodo cer : cerrados) {
+		        if (cer.equals(buscado)) return cer;
+		    }
+		    return null; //si no ha sido encontrado devolvemos null
+		}
 		
-		
-			return ruta; //devolvemos la ruta con todos los nodos hasta la meta
-			
+		//funcion para imprimir resultados
+		private void imprimirResultados() {
+		    System.out.println("Nodos expandidos totales: " + nodos_expandidos);
+		    System.out.println("Tamaño de la ruta calculada: " + ruta.size() + " acciones");
+		    System.out.println("Tamaño del conjunto cerrados: " + cerrados.size());
+		    System.out.println("Nodos restantes en abiertos: " + abiertos.size());
 		}
 		
 		//función para reconstruir la ruta a partir de un nodo
