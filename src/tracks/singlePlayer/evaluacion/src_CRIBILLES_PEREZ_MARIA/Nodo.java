@@ -1,9 +1,6 @@
 package tracks.singlePlayer.evaluacion.src_CRIBILLES_PEREZ_MARIA;
 
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashSet;
-//import java.util.Objects;
 import ontology.Types.ACTIONS;
 import tools.Vector2d;
 
@@ -13,43 +10,48 @@ public class Nodo implements Comparable<Nodo>  {
 	//dentro de cada nodo tiene un estado 
 	//un nodo esta asociado a un unico estado, mientras que un mismo estado puede estar representado por diferentes nodos
 	
-	//puntero al nodo padre
-	Nodo padre; 
-	int heuristica; 
-	int coste; 
-	boolean capa_roja; 
-	boolean capa_azul; 
-	Vector2d posicion;
-	int antiguedad; 
-	int f; //f=g+h
+	//posiblemente hubiese quedado mas claro hacer una clase diferente para el estado y otra para el nodo, 
+	//pero por simplicidad lo hemos hecho todo en la misma clase
+	//aun asi, lo ideal es tener siempre claro que seria del nodo y que seria del estado
 	
-	//accion que ha hecho el padre para llegar hasta este nodo
-	ACTIONS accion_padre; 
+	//Estado vs. Nodo (son diferentes):
+	//Estado: posición, capa_roja, capa_azul, capas rojas y capasazules
+	//Nodo: padre, heuristica, coste, f, accion_padre, antiguedad
+	
+	//Atributos de la clase Nodo: 
+	Nodo padre; //puntero al nodo padre
+	int heuristica;  //heuristica del nodo (distancia manhattan). Es como una aproximacion de lo lejos que esta del portal
+	int coste;  //coste del nodo
+	boolean capa_roja; //booleano true/false para saber si el nodo tiene una capa roja o no
+	boolean capa_azul; //booleano true/false para saber si el nodo tiene una capa azul o no
+	Vector2d posicion; //posicion del avatar en el mapa
+	int antiguedad; //para el criterio de desempate
+	int f; //f=g+h
+	ACTIONS accion_padre; //accion que ha hecho el padre para llegar hasta este nodo
 
+	//hemos hecho un HashSet de String para que sea mas eficiente ya que vector2d no tiene hashcode y por tanto no era tan eficiente
+	//simplemente la diferencia es que se almacena una clave de string que es la posicion pasada a string
 	HashSet <String> capas_rojas = new HashSet<>(); //posiciones de las capas rojas restantes de cada nodo
 	HashSet <String> capas_azules = new HashSet<>(); //posiciones de las capas azules restantes de cada nodo
 	
-	 private int cachedHash;  // Campo para almacenar el hash calculado
-	 private boolean hashCalculated = false;
+	private int num_hash;  //para almacenar el hash calculado
+	private boolean hash_calculado = false; //booleano para saber si el hash ha sido calculado antes o no
 	    
-	/* * initialize all variables for the nodo
-	*/
+	//Constructor para incializar todos los atributos del nodo a unos parametros dados
 	public Nodo (Vector2d pos_avatar, Nodo padre, int heuristica, int coste, ACTIONS accion_padre, boolean capa_roja, boolean capa_azul, HashSet<String> capas_rojas, HashSet<String> capas_azules, int antiguedad) { //constructor que crea un nodo 
 		this.posicion=pos_avatar; 
 		this.padre=padre;
 		this.heuristica=heuristica; 
-		this.f=heuristica+coste; 
+		this.f=heuristica+coste; //esto es lo unico que no pasamos por parametro ya que hacemos la suma directamente aqui
 		this.coste=coste; 
 		this.capa_roja=capa_roja; 
 		this.capa_azul=capa_azul; 
 		this.accion_padre=accion_padre;
-		this.capas_rojas=new HashSet <> (capas_rojas);
-		this.capas_azules=new HashSet <> (capas_azules);
+		this.capas_rojas=new HashSet <> (capas_rojas); //en java no ese copian, se referencian. Por eso hacemos un nuevo hashset
+		this.capas_azules=new HashSet <> (capas_azules); //en java no ese copian, se referencian. Por eso hacemos un nuevo hashset
 		this.antiguedad=antiguedad;
-		
 	}
 
-	
 	@Override
 	public int compareTo(Nodo otro_nodo) {
 		
@@ -66,122 +68,69 @@ public class Nodo implements Comparable<Nodo>  {
 	}
 	
 	//funcion para comparar nodos
-//	@Override
-//	public boolean equals(Object obj) {
-//		if (this == obj) return true;
-//		if (obj == null || getClass() != obj.getClass()) return false;
-//		Nodo otro = (Nodo) obj;
-//		
-//		boolean iguales = capa_roja == otro.capa_roja && capa_azul == otro.capa_azul && posicion.equals(otro.posicion) && capas_rojas.equals(otro.capas_rojas) && capas_azules.equals(otro.capas_azules);
-//		
-//		return iguales;
-//	}
-	
 	@Override
 	public boolean equals(Object obj) {
-	    if (this == obj) return true;
-	    if (obj == null || getClass() != obj.getClass()) return false;
+	    if (this == obj) return true; //si son el mismo objeto
+	    if (obj == null || getClass() != obj.getClass()) return false; //si el objeto es null o no es del mismo tipo
 	    
-	    Nodo otro = (Nodo) obj;
+	    Nodo otro = (Nodo) obj; //convertimos el objeto a nodo
 	    
-	    // 1. Comparación más rápida: booleanos
+	    //comparamos primero los booleanos porque son los mas rapidos
 	    if (capa_roja != otro.capa_roja || capa_azul != otro.capa_azul) 
 	        return false;
 	    
-	    // 2. Comparación de coordenadas (más rápida que Vector2d.equals())
+	    //despues la posicion (vector2d)
 	    if (posicion.x != otro.posicion.x || posicion.y != otro.posicion.y) 
 	        return false;
 	    
-	    // 3. Comparación de conjuntos (solo si lo anterior coincide)
+	    //por ultimo lo mas costoso
 	    if (!capas_rojas.equals(otro.capas_rojas)) 
 	        return false;
 	    
 	    return capas_azules.equals(otro.capas_azules);
 	}
 	
+	//hashcode
 	@Override
     public int hashCode() {
-        if (!hashCalculated) {
-            cachedHash = calcularHash();
-            hashCalculated = true;
+        if (!hash_calculado) { //si no hemos calculado antes el hash
+            num_hash = calcularHash(); //lo calculamos
+            hash_calculado = true; //y lo marcamos como calculado
         }
-        return cachedHash;
+        return num_hash; //devolvemos el hash
     }
 	
 	//calcular hash
-	//@Override
-	public int calcularHash() {
+	public int calcularHash() {  //multiplicamos por numeros primos para que haya los menos conflictos posibles y asi sea los mas eficiente posible
 		return (int) posicion.x * 31 + (int) posicion.y * (17) + (capa_roja ? 1 : 0) * 13 + (capa_azul ? 1 : 0) * 37 + capas_rojas.hashCode() * 43 + capas_azules.hashCode() * 47;
 	}
-	
-	//prueba de otros hash mas senicllos para optimizar
-//	@Override    
-//	public int hashCode() {        
-//		int hash = 7;        
-//		hash= 31 * hash + (int) this.posicion.x;        
-//		hash = 31 * hash + (int)this.posicion.y;        
-//		hash =	31 * hash + (this.capa_azul? 1 : 0);   
-//		hash =	31 * hash + (this.capa_roja? 1 : 0);
-//		hash = 31 * hash +	capas_rojas.hashCode();  
-//		hash = 31 * hash +	capas_azules.hashCode(); 
-//		return hash;    
-//	}
-	
 
-	
-//	private int calcularHash() {
-//        int hash = 17;  // Número primo inicial
-//        hash = 31 * hash + (int)posicion.x;
-//        hash = 31 * hash + (int)posicion.y;
-//        hash = 31 * hash + (capa_roja ? 1 : 0);
-//        hash = 31 * hash + (capa_azul ? 1 : 0);
-//        hash = 31 * hash + capas_rojas.hashCode();
-//        hash = 31 * hash + capas_azules.hashCode();
-//        return hash;
-//    }
-
-	
-//	public String generarClave() {
-//	    StringBuilder clave = new StringBuilder();
-//	    
-//	    clave.append(this.posicion.x).append(",").append(this.posicion.y).append(";"); //posicion
-//	    clave.append(this.capa_roja).append(",").append(this.capa_azul).append(";"); //capa roja y azul
-//	    
-//	    clave.append("R:"); //capas_rojas restantes
-//	    this.capas_rojas.stream()
-//	        .sorted(Comparator.comparingDouble((Vector2d v) -> v.x).thenComparingDouble(v -> v.y))
-//	        .forEach(v -> clave.append(v.x).append("_").append(v.y).append(","));
-//	    
-//	    clave.append("B:"); //capas_azules restantes
-//	    this.capas_azules.stream()
-//	        .sorted(Comparator.comparingDouble((Vector2d v) -> v.x).thenComparingDouble(v -> v.y))
-//	        .forEach(v -> clave.append(v.x).append("_").append(v.y).append(","));
-//	    
-//	    return clave.toString();
-//	}
-	
-	public String generarClave() {
+	//para crear una clave univoca para cada nodo y poder guardar y buscar en una tabla hash
+	//representa el estado del nodo
+	//basicamente es codificar en un string separados con , y ; los atributos para que no sean vector2d, int, booleanos...
+	public String generarClave() { //este metodo me lo ha hecho principalmente ChatGPT (es solo crear un string ordenado)
+		//creamos un stringbuilder para construir eficientemente la cadena
 	    StringBuilder clave = new StringBuilder();
 
-	    // Posición actual (puede dejarse como está si sigue siendo Vector2d)
+	    //añadimos posicion actual (es un vector2d pasado a string)
 	    clave.append(this.posicion.x).append(",").append(this.posicion.y).append(";");
 
-	    // Estado de las capas del nodo
+	    //añadimos el estado de la capa azul y roja
 	    clave.append(this.capa_roja).append(",").append(this.capa_azul).append(";");
 
-	    // Capas rojas restantes (ordenadas)
+	    //añadimos las capas rojas restantes (ordenadas)
 	    clave.append("R:");
 	    this.capas_rojas.stream()
 	        .sorted()
 	        .forEach(pos -> clave.append(pos).append(","));
 
-	    // Capas azules restantes (ordenadas)
+	    //añadimos las capas azules restantes (ordenadas)
 	    clave.append("B:");
 	    this.capas_azules.stream()
 	        .sorted()
 	        .forEach(pos -> clave.append(pos).append(","));
 
-	    return clave.toString();
+	    return clave.toString(); //lo convertimos a string y devolvemos la clave final
 	}
 
 
